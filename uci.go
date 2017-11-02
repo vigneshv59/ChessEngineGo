@@ -11,8 +11,16 @@ import (
   "strings"
 )
 
+type uciConfig struct {
+  debug bool
+}
+
 func handleUci() {
   fmt.Println("uciok")
+}
+
+func (ec *uciConfig) setDebug(desiredState bool) {
+  ec.debug = desiredState
 }
 
 func handleIsReady() {
@@ -23,24 +31,63 @@ func handleNewGame() {
   // Clear chessboard and initialize new game
 }
 
-func handlePosition(position string) {
+func handlePosition(position string) Chessboard {
   board, _ := NewChessboard(position)
-  fmt.Println(board.boardSquares)
+
+  return board
 }
 
-func handleInput(input string) {
-  switch strings.Split(input, " ")[0] {
+func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard {
+  cmdArr := strings.Split(input, " ")
+
+  switch cmdArr[0] {
   case "uci":
     handleUci()
   case "isready":
     handleIsReady()
+  case "debug":
+    debugState := false
+
+    if cmdArr[1] == "on" {
+      debugState = true
+    }
+
+    engineConfig.setDebug(debugState)
   case "position":
-    handlePosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+    fen := "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+
+    if len(cmdArr) == 1 {
+      fmt.Println("Incorrect arguments.")
+
+      break
+    }
+
+    if cmdArr[1] != "startpos" {
+      fen = cmdArr[1]
+    }
+
+    b = handlePosition(fen)
+  case "dump":
+    if !engineConfig.debug {
+      fmt.Println("Unknown command.")
+
+      break
+    }
+
+    b.PrintBoard()
+
+    break
+  default:
+    fmt.Println("Unknown command.")
   }
+
+  return b
 }
 
 func main() {
   fmt.Println("BrainyEngine by Vignesh Varadarajan v0.0")
+  engineConfig := uciConfig{false}
+  var board Chessboard
 
   for {
 
@@ -50,7 +97,9 @@ func main() {
     if err != nil {
       fmt.Println(err)
     } else {
-      handleInput(strings.TrimSpace(string(sentence)))
+      board = handleInput(strings.TrimSpace(string(sentence)),
+                &engineConfig,
+                board)
     }
 
   }
