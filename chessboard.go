@@ -115,9 +115,19 @@ func (c Chessboard) attemptedPromotion(from int, to int) bool {
   return false
 }
 
+// Makes a move using algebraic descriptive notation.
+// Example: e2e4
+
+func (c *Chessboard) MoveAlDescriptive(notation string) bool {
+  fromSquare := alToPos(notation[0:2])
+  toSquare := alToPos(notation[2:])
+
+  return c.Move(fromSquare, toSquare, "")
+}
+
 // Makes a move on the board, returning the success/failure as a bool
 
-func (c Chessboard) Move(from int, to int, promopiece string) bool {
+func (c *Chessboard) Move(from int, to int, promopiece string) bool {
   color := c.pieceColorOnPosition(from)
   turn := 0
 
@@ -137,6 +147,10 @@ func (c Chessboard) Move(from int, to int, promopiece string) bool {
   }
 
   // TODO: Check/Checkmate validation, update board, handle en passant
+
+  c.turn = !c.turn
+  c.boardSquares[to] = c.boardSquares[from]
+  c.boardSquares[from] = -1
 
   return true
 }
@@ -187,6 +201,7 @@ func (c Chessboard) prelimValidMove(from int, to int) bool {
       return true
     }
   default:
+    fmt.Println("Default")
     return false
   }
 
@@ -337,11 +352,13 @@ func (c Chessboard) validMovePawn(from int, to int) bool {
   toCol := colFromPosition(to)
 
   if c.pieceColorOnPosition(from) == 0 {
-
     // Check for captures
     if c.validColorPiece(to, 1) || (c.enpassantPos == to) {
-      if (toRow == fromRow - 1) && (toCol == fromCol + 1) {
+      if (toRow == fromRow - 1) &&
+          ((toCol == fromCol + 1) || (toCol == fromCol - 1)) {
+
         return true
+
       }
 
       return false
@@ -360,8 +377,11 @@ func (c Chessboard) validMovePawn(from int, to int) bool {
 
     // Captures
     if c.validColorPiece(to, 0) || (c.enpassantPos == to) {
-      if (toRow == fromRow + 1) && (toCol == fromCol + 1) {
+      if (toRow == fromRow + 1) &&
+          ((toCol == fromCol + 1) || (toCol == fromCol - 1)) {
+
         return true
+
       }
 
       return false
@@ -418,8 +438,12 @@ func (c Chessboard) kingInCheck(color int) {
 }
 
 // Returns 0 for white pieces and 1 for
-// black pieces.
+// black pieces, -1 for empty.
 func (c Chessboard) pieceColorOnPosition(pos int) int {
+  if c.boardSquares[pos] < 0 {
+      return -1
+  }
+
   return int(c.boardSquares[pos] / 10)
 }
 
@@ -438,6 +462,15 @@ func colFromPosition(pos int) int {
 
 func posFromRowColumn(r int, c int) int {
   return r * 8 + c
+}
+
+func alToPos(al string) int {
+  r, _ := strconv.Atoi(al[1:])
+  r = 8 - r
+
+  c := ([]byte(al[0:1]))[0] - []byte("a"[0:1])[0]
+
+  return posFromRowColumn(r, int(c))
 }
 
 // Return the row/col direction (1,-1,0) to travel "from" to "to."

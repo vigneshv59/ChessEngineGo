@@ -28,7 +28,7 @@ func handleIsReady() {
 }
 
 func handleNewGame() {
-  // Clear chessboard and initialize new game
+  // TODO: Clear chessboard and initialize new game
 }
 
 func handlePosition(position string) Chessboard {
@@ -54,7 +54,7 @@ func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard
 
     engineConfig.setDebug(debugState)
   case "position":
-    fen := "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+    fen := "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
     if len(cmdArr) == 1 {
       fmt.Println("Incorrect arguments.")
@@ -63,10 +63,28 @@ func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard
     }
 
     if cmdArr[1] != "startpos" {
-      fen = cmdArr[1]
+      fen = strings.Join(cmdArr[1:], " ")
     }
 
+
     b = handlePosition(fen)
+
+    for i, v := range cmdArr {
+      if v == "moves" {
+        moves := cmdArr[(i+1):]
+
+        for _, m := range moves {
+          success := b.MoveAlDescriptive(m)
+
+          if !success {
+            break
+          }
+        }
+
+        break
+      }
+    }
+
   case "dump":
     if !engineConfig.debug {
       fmt.Println("Unknown command.")
