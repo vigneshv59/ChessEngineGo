@@ -145,6 +145,10 @@ func NewChessboard(fen string) (board Chessboard, err error) {
 func (c Chessboard) attemptedPromotion(from int, to int) bool {
   color := c.pieceColorOnPosition(from)
 
+  if !c.validPiecePawn(from) {
+    return false
+  }
+
   if color == 0 && to > -1 && to < 8 {
     return true
   }
@@ -180,6 +184,7 @@ func (c *Chessboard) MakeMove(from int, to int, promopiece string) bool {
 func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool {
   color := c.pieceColorOnPosition(from)
   turn := 0
+  restoreMap := make(map[int]int8)
 
   if c.turn {
     turn = 1
@@ -217,35 +222,59 @@ func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool
     }
   }
 
+  // Castling
   if c.castlingAttempt(color, from, to) {
-    c.boardSquares[c.rookPositionAfterCastle(color, from, to)] =
-      c.boardSquares[c.rookPositionBeforeCastle(color, from, to)]
-    c.boardSquares[c.rookPositionBeforeCastle(color, from, to)] = -1
+    afterPos := c.rookPositionAfterCastle(color, from, to)
+    beforePos := c.rookPositionBeforeCastle(color, from, to)
+
+    restoreMap[afterPos] = c.boardSquares[afterPos]
+    restoreMap[beforePos] = c.boardSquares[beforePos]
+
+    c.boardSquares[afterPos] = c.boardSquares[beforePos]
+    c.boardSquares[beforePos] = -1
   }
 
+  // En passant capture
   if c.validPiecePawn(from) && c.validColorPiece(from, color) &&
     c.enpassantPos == to {
       if color == 1 {
+        restoreMap[to-8] = c.boardSquares[to-8]
         c.boardSquares[to-8] = -1
       } else {
+        restoreMap[to+8] = c.boardSquares[to+8]
         c.boardSquares[to+8] = -1
       }
   }
 
-  // TODO: Checkmate validation
   preEpPos := c.enpassantPos
   c.enpassantPos = c.generateEpPos(color, from, to)
+  restoreMap[to] = c.boardSquares[to]
+  restoreMap[from] = c.boardSquares[from]
 
-  c.boardSquares[to] = c.boardSquares[from]
-  c.boardSquares[from] = -1
+  if c.attemptedPromotion(from, to) && !dryrun {
+    if promopiece == "" {
+      c.boardSquares[to] = int8(color * 10 + 5)
+    } else {
+      c.boardSquares[to] = int8(color) * 10 + (pieceVals[promopiece] % 10)
+    }
+
+    c.boardSquares[from] = -1
+  } else {
+    c.boardSquares[to] = c.boardSquares[from]
+    c.boardSquares[from] = -1
+  }
 
   kingInCheck := c.kingInCheck(color)
   if kingInCheck || dryrun {
-    c.boardSquares[from] = c.boardSquares[to]
-    c.boardSquares[to] = -1
+    for k, v := range restoreMap {
+      c.boardSquares[k] = v
+    }
 
-    c.ksCanCastle = preKsCanCastle
-    c.qsCanCastle = preQsCanCastle
+    c.ksCanCastle[0] = preKsCanCastle[0]
+    c.qsCanCastle[0] = preQsCanCastle[0]
+
+    c.ksCanCastle[1] = preKsCanCastle[1]
+    c.qsCanCastle[1] = preQsCanCastle[1]
 
     c.enpassantPos = preEpPos
 
@@ -265,9 +294,6 @@ func (c Chessboard) LegalMovesFromSquare(from int) []int {
   legalMoves := make([]int, 0, 32)
 
   for _, v := range(candMoves) {
-    fmt.Println(from)
-    fmt.Println(v)
-
     if c.moveIsLegal(from, v, "") {
       legalMoves = append(legalMoves, v)
     }
