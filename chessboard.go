@@ -10,6 +10,8 @@ import (
 
 const startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
+// Map fen piece strings to piece values. This makes for easy color/piece
+// checking by dividing or mod 10 operations.
 var pieceVals = map[string] int8 {
   "K" : 6,
   "Q" : 5,
@@ -25,9 +27,10 @@ var pieceVals = map[string] int8 {
   "p" : 11,
 }
 
+// Struct to represent chessboard state.
 type Chessboard struct {
   boardSquares []int8
-  enpassantPos int
+  enpassantPos int // The position for an enpassant capture, -1 if it doesnt exist.
   ksCanCastle []bool // Can players castle king-side? (0 white, 1 black)
   qsCanCastle []bool // Can players castle queen-side? (0 white, 1 black)
   turn bool // false for white's move, true for black's move
@@ -153,18 +156,28 @@ func (c Chessboard) attemptedPromotion(from int, to int) bool {
   return false
 }
 
+// Checks if a move is legal without altering the board.
+func (c Chessboard) moveIsLegal(from int, to int, promopiece string) bool {
+  return c.Move(from, to, promopiece, true)
+}
+
 // Makes a move using algebraic descriptive notation.
 // Example: e2e4
 func (c *Chessboard) MoveAlDescriptive(notation string) bool {
   fromSquare := alToPos(notation[0:2])
   toSquare := alToPos(notation[2:])
 
-  return c.Move(fromSquare, toSquare, "")
+  return c.MakeMove(fromSquare, toSquare, "")
+}
+
+// Moves from->to if the move is legal.
+func (c *Chessboard) MakeMove(from int, to int, promopiece string) bool {
+  return c.Move(from, to, promopiece, false)
 }
 
 // Makes a move on the board, returning the legaility of the move
 // as a boolean.
-func (c *Chessboard) Move(from int, to int, promopiece string) bool {
+func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool {
   color := c.pieceColorOnPosition(from)
   turn := 0
 
@@ -226,7 +239,8 @@ func (c *Chessboard) Move(from int, to int, promopiece string) bool {
   c.boardSquares[to] = c.boardSquares[from]
   c.boardSquares[from] = -1
 
-  if c.kingInCheck(color) {
+  kingInCheck := c.kingInCheck(color)
+  if kingInCheck || dryrun {
     c.boardSquares[from] = c.boardSquares[to]
     c.boardSquares[to] = -1
 
@@ -234,6 +248,8 @@ func (c *Chessboard) Move(from int, to int, promopiece string) bool {
     c.qsCanCastle = preQsCanCastle
 
     c.enpassantPos = preEpPos
+
+    return !kingInCheck
   }
 
   c.turn = !c.turn
@@ -245,7 +261,19 @@ func (c *Chessboard) Move(from int, to int, promopiece string) bool {
 // square, represented as an array of legal destination
 // squares.
 func (c Chessboard) LegalMovesFromSquare(from int) []int {
-  return c.candSquares(from)
+  candMoves := c.candSquares(from)
+  legalMoves := make([]int, 0, 32)
+
+  for _, v := range(candMoves) {
+    fmt.Println(from)
+    fmt.Println(v)
+
+    if c.moveIsLegal(from, v, "") {
+      legalMoves = append(legalMoves, v)
+    }
+  }
+
+  return legalMoves
 }
 
 // Validates a move on a board with a from index and a to index
@@ -1022,6 +1050,7 @@ func (c Chessboard) validCastlePositionQueenside(color int) bool {
   return (c.validPieceKing(kingPos) && c.validPieceRook(rookPos))
 }
 
+// Returns the king's position before castling for a given color.
 func (c Chessboard) kingCastlePosition(color int) int {
   if color == 0 {
     return 60
@@ -1030,6 +1059,8 @@ func (c Chessboard) kingCastlePosition(color int) int {
   return 4
 }
 
+// Returns the rook's position before castling for a given color and move
+// (identifies whether the move is a ks or qs castle).
 func (c Chessboard) rookPositionBeforeCastle(color int, from int, to int) int {
   if color == 0 && from == 60 && to == 62 {
     return 63
@@ -1050,6 +1081,8 @@ func (c Chessboard) rookPositionBeforeCastle(color int, from int, to int) int {
   return -1
 }
 
+// Returns the rook's position after castling for a given color and move
+// (identifies whether the move is a ks or qs castle).
 func (c Chessboard) rookPositionAfterCastle(color int, from int, to int) int {
   if color == 0 && from == 60 && to == 62 {
     return 61
@@ -1070,6 +1103,7 @@ func (c Chessboard) rookPositionAfterCastle(color int, from int, to int) int {
   return -1
 }
 
+// Returns the rook's initial position in a kingside castle.
 func (c Chessboard) rookCastleKingsidePosition(color int) int {
   if color == 0 {
     return 63
@@ -1078,6 +1112,7 @@ func (c Chessboard) rookCastleKingsidePosition(color int) int {
   return 7
 }
 
+// Returns the rook's initial position in a queenside castle.
 func (c Chessboard) rookCastleQueensidePosition(color int) int {
   if color == 0 {
     return 56
