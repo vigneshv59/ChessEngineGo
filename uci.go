@@ -85,6 +85,21 @@ func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard
       }
     }
 
+  case "legalmoves":
+    if !engineConfig.debug {
+      fmt.Println("Unknown command.")
+
+      break
+    }
+
+    if len(cmdArr) <= 1 {
+      fmt.Println("Command takes exactly one argument.")
+
+      break
+    }
+
+    b.PrintLegalMoves(cmdArr[1])
+
   case "dump":
     if !engineConfig.debug {
       fmt.Println("Unknown command.")

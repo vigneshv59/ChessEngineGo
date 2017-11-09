@@ -28,9 +28,13 @@ var pieceVals = map[string] int8 {
 type Chessboard struct {
   boardSquares []int8
   enpassantPos int
+  ksCanCastle []bool // Can players castle king-side? (0 white, 1 black)
+  qsCanCastle []bool // Can players castle queen-side? (0 white, 1 black)
   turn bool // false for white's move, true for black's move
 }
 
+// Creates a new chessboard from a given fen position. Either returns the
+// chessboard in board, or the creation error in err.
 func NewChessboard(fen string) (board Chessboard, err error) {
   // Verify presence of FEN.
   if len(fen) == 0 {
@@ -85,7 +89,7 @@ func NewChessboard(fen string) (board Chessboard, err error) {
   }
 
   // Handle the turn encoded in the fen
-  if len(fenParts) > 0 {
+  if len(fenParts) > 1 {
     if fenParts[1] == "w" {
       board.turn = false
     }
@@ -95,10 +99,44 @@ func NewChessboard(fen string) (board Chessboard, err error) {
     }
   }
 
+  board.ksCanCastle = make([]bool, 2, 2)
+  board.qsCanCastle = make([]bool, 2, 2)
+
+  board.ksCanCastle[0] = board.validCastlePositionKingside(0)
+  board.ksCanCastle[1] = board.validCastlePositionKingside(1)
+  board.qsCanCastle[0] = board.validCastlePositionQueenside(0)
+  board.qsCanCastle[1] = board.validCastlePositionQueenside(1)
+
+  if len(fenParts) > 2 {
+    ksw, _ := regexp.MatchString("^.*K.*$", fenParts[2])
+    ksb, _ := regexp.MatchString("^.*k.*$", fenParts[2])
+    qsw, _ := regexp.MatchString("^.*Q.*$", fenParts[2])
+    qsb, _ := regexp.MatchString("^.*q.*$", fenParts[2])
+
+    if !ksw {
+      board.ksCanCastle[0] = false
+    }
+
+    if !ksb {
+      board.ksCanCastle[1] = false
+    }
+
+    if !qsw {
+      board.qsCanCastle[0] = false
+    }
+
+    if !qsb {
+      board.qsCanCastle[1] = false
+    }
+  }
+
+  board.enpassantPos = -1
+  if len(fenParts) > 3 {
+    board.enpassantPos = alToPos(fenParts[3])
+  }
+
   return
 }
-
-// Special Moves Convenience Checks
 
 // Checks for promotion validity, does not take into account turn
 func (c Chessboard) attemptedPromotion(from int, to int) bool {
@@ -117,7 +155,6 @@ func (c Chessboard) attemptedPromotion(from int, to int) bool {
 
 // Makes a move using algebraic descriptive notation.
 // Example: e2e4
-
 func (c *Chessboard) MoveAlDescriptive(notation string) bool {
   fromSquare := alToPos(notation[0:2])
   toSquare := alToPos(notation[2:])
@@ -125,8 +162,8 @@ func (c *Chessboard) MoveAlDescriptive(notation string) bool {
   return c.Move(fromSquare, toSquare, "")
 }
 
-// Makes a move on the board, returning the success/failure as a bool
-
+// Makes a move on the board, returning the legaility of the move
+// as a boolean.
 func (c *Chessboard) Move(from int, to int, promopiece string) bool {
   color := c.pieceColorOnPosition(from)
   turn := 0
@@ -146,22 +183,75 @@ func (c *Chessboard) Move(from int, to int, promopiece string) bool {
     return false
   }
 
-  // TODO: Check/Checkmate validation, update board, handle en passant
+  preKsCanCastle := make([]bool, 2)
+  preQsCanCastle := make([]bool, 2)
 
-  c.turn = !c.turn
+  copy(preKsCanCastle, c.ksCanCastle)
+  copy(preQsCanCastle, c.qsCanCastle)
+
+  if c.validPieceKing(from) {
+    c.ksCanCastle[color] = false
+    c.qsCanCastle[color] = false
+  }
+
+  if c.validPieceRook(from) {
+    if from == c.rookCastleKingsidePosition(color) {
+      c.ksCanCastle[color] = false
+    }
+
+    if from == c.rookCastleQueensidePosition(color) {
+      c.qsCanCastle[color] = false
+    }
+  }
+
+  if c.castlingAttempt(color, from, to) {
+    c.boardSquares[c.rookPositionAfterCastle(color, from, to)] =
+      c.boardSquares[c.rookPositionBeforeCastle(color, from, to)]
+    c.boardSquares[c.rookPositionBeforeCastle(color, from, to)] = -1
+  }
+
+  if c.validPiecePawn(from) && c.validColorPiece(from, color) &&
+    c.enpassantPos == to {
+      if color == 1 {
+        c.boardSquares[to-8] = -1
+      } else {
+        c.boardSquares[to+8] = -1
+      }
+  }
+
+  // TODO: Checkmate validation
+  preEpPos := c.enpassantPos
+  c.enpassantPos = c.generateEpPos(color, from, to)
+
   c.boardSquares[to] = c.boardSquares[from]
   c.boardSquares[from] = -1
 
+  if c.kingInCheck(color) {
+    c.boardSquares[from] = c.boardSquares[to]
+    c.boardSquares[to] = -1
+
+    c.ksCanCastle = preKsCanCastle
+    c.qsCanCastle = preQsCanCastle
+
+    c.enpassantPos = preEpPos
+  }
+
+  c.turn = !c.turn
+
   return true
+}
+
+// Returns the legal moves of a piece on a particular
+// square, represented as an array of legal destination
+// squares.
+func (c Chessboard) LegalMovesFromSquare(from int) []int {
+  return c.candSquares(from)
 }
 
 // Validates a move on a board with a from index and a to index
 // Returns a boolean indicating success of the move.
 // This is a preliminary validator, and does not take into account checkmate
 // or checks, which will be dealt with after this first pass confirmation
-
-// TODO: En passant capture, castling
-
 func (c Chessboard) prelimValidMove(from int, to int) bool {
   // Cannot move a piece to the same square.
   if from == to {
@@ -175,11 +265,14 @@ func (c Chessboard) prelimValidMove(from int, to int) bool {
 
   switch c.boardSquares[from] % 10 {
   case 6: // King
-    // TODO: Castling
-
     if c.validMoveKing(from, to) {
       return true
     }
+
+    if c.validCastle(from, to) {
+      return true
+    }
+
   case 5: // Queen
     if c.validMoveQueen(from, to) && c.validateEmptySquaresBetween(from, to) {
       return true
@@ -208,31 +301,62 @@ func (c Chessboard) prelimValidMove(from int, to int) bool {
   return false
 }
 
+// Generates candidate squares for a piece on a given
+// from square.
+func (c Chessboard) candSquares(from int) []int {
+  switch c.boardSquares[from] % 10 {
+  case 6: // King
+    return c.candSquaresKing(from)
+  case 5: // Queen
+    return c.candSquaresQueen(from)
+  case 4: // Rook
+    return c.candSquaresRook(from)
+  case 3: // Bishop
+    return c.candSquaresBishop(from)
+  case 2: // Knight
+    return c.candSquaresKnight(from)
+  case 1: // Pawn
+    return c.candSquaresPawn(from)
+  default:
+    return make([]int, 0, 1)
+  }
+
+  return make([]int, 0, 1)
+}
+
 // Piece Existence Validators:
+
+// Checks if a king exists on a square.
 func (c Chessboard) validPieceKing(square int) bool {
   return int(c.boardSquares[square] % 10) == 6
 }
 
+// Checks if a queen exists on a square.
 func (c Chessboard) validPieceQueen(square int) bool {
   return int(c.boardSquares[square] % 10) == 5
 }
 
+// Checks if a rook exists on a square.
 func (c Chessboard) validPieceRook(square int) bool {
   return int(c.boardSquares[square] % 10) == 4
 }
 
+// Checks if a bishop exists on a square.
 func (c Chessboard) validPieceBishop(square int) bool {
   return int(c.boardSquares[square] % 10) == 3
 }
 
+// Checks if a knight exists on a square.
 func (c Chessboard) validPieceKnight(square int) bool {
   return int(c.boardSquares[square] % 10) == 2
 }
 
+// Checks if a pawn exists on a square.
 func (c Chessboard) validPiecePawn(square int) bool {
   return int(c.boardSquares[square] % 10) == 1
 }
 
+// Checks if a piece exists on a square.
 func (c Chessboard) validPiece(square int) bool {
   return int(c.boardSquares[square]) != -1
 }
@@ -267,6 +391,33 @@ func (c Chessboard) validMoveKnight(from int, to int) bool {
   return false
 }
 
+// Generates all possible candidate moves for a knight at position from.
+func (c Chessboard) candSquaresKnight(from int) []int {
+  if !c.validPieceKnight(from) {
+    return make([]int, 0, 1)
+  }
+
+  candSquares := make([]int, 0, 16)
+  color := c.pieceColorOnPosition(from)
+
+  directions := [][]int{{2,1},{-2,1},{2,-1},{-2,-1}, {1,2},{-1,2},{1,-2},{-1,-2}}
+
+  for _,v := range(directions) {
+    currRow := rowFromPosition(from) + v[0]
+    currCol := colFromPosition(from) + v[1]
+
+    currPos := posFromRowColumn(currRow, currCol)
+
+    if currRow > -1 && currRow < 8 && currCol > -1 && currCol < 8 {
+      if c.pieceColorOnPosition(currPos) != color {
+        candSquares = append(candSquares, currPos)
+      }
+    }
+  }
+
+  return candSquares
+}
+
 // Validates a queen move, does not take into account turn.
 func (c Chessboard) validMoveQueen(from int, to int) bool {
   if !c.validPieceQueen(from) {
@@ -276,12 +427,13 @@ func (c Chessboard) validMoveQueen(from int, to int) bool {
   return c.validMoveRook(from, to) || c.validMoveBishop(from, to)
 }
 
+// Generates all possible candidate moves for a queen at position from.
+func (c Chessboard) candSquaresQueen(from int) []int {
+  return append(c.candSquaresRook(from), c.candSquaresBishop(from)...)
+}
+
 // Validates a rook move, does not take into account turn.
 func (c Chessboard) validMoveRook(from int, to int) bool {
-  if !c.validPieceRook(from) {
-      return false
-  }
-
   fromRow := rowFromPosition(from)
   fromCol := colFromPosition(from)
   toRow := rowFromPosition(to)
@@ -291,12 +443,81 @@ func (c Chessboard) validMoveRook(from int, to int) bool {
 
 }
 
-// Validates a bishop move, does not take into account turn.
-func (c Chessboard) validMoveBishop(from int, to int) bool {
-  if !c.validPieceBishop(from) {
-      return false
+// Generates all possible candidate moves for a rook at position from.
+// Should only be used for queens (through candSquaresQueen), or rooks.
+func (c Chessboard) candSquaresRook(from int) []int {
+  candSquares := make([]int, 0, 16)
+
+  color := c.pieceColorOnPosition(from)
+
+  fromRow := rowFromPosition(from)
+  fromCol := colFromPosition(from)
+
+  // Squares below the rook
+  for i := 1; i < 8 - fromRow; i++ {
+    to := posFromRowColumn(fromRow + i, fromCol)
+
+    if c.pieceColorOnPosition(to) == color {
+      break
+    }
+
+    candSquares = append(candSquares, to)
+
+    if c.pieceColorOnPosition(to) != -1 {
+      break
+    }
   }
 
+  // Squares above the rook
+  for i := 1; i < fromRow + 1; i++ {
+    to := posFromRowColumn(fromRow - i, fromCol)
+
+    if c.pieceColorOnPosition(to) == color {
+      break
+    }
+
+    candSquares = append(candSquares, to)
+
+    if c.pieceColorOnPosition(to) != -1 {
+      break
+    }
+  }
+
+  // Squares to the right of the rook
+  for i := 1; i < 8 - fromCol; i++ {
+    to := posFromRowColumn(fromRow, fromCol + i)
+
+    if c.pieceColorOnPosition(to) == color {
+      break
+    }
+
+    candSquares = append(candSquares, to)
+
+    if c.pieceColorOnPosition(to) != -1 {
+      break
+    }
+  }
+
+  // Squares to the left of the rook
+  for i := 1; i < fromCol + 1; i++ {
+    to := posFromRowColumn(fromRow, fromCol - i)
+
+    if c.pieceColorOnPosition(to) == color {
+      break
+    }
+
+    candSquares = append(candSquares, to)
+
+    if c.pieceColorOnPosition(to) != -1 {
+      break
+    }
+  }
+
+  return candSquares
+}
+
+// Validates a bishop move, does not take into account turn.
+func (c Chessboard) validMoveBishop(from int, to int) bool {
   fromRow := rowFromPosition(from)
   fromCol := colFromPosition(from)
   toRow := rowFromPosition(to)
@@ -317,7 +538,120 @@ func (c Chessboard) validMoveBishop(from int, to int) bool {
 
 }
 
-// Validates a king move, does not take into account turn.
+// Generates the candidate squares for a bishop on the given
+// square. Returns the squares as an array of possible destinations.
+func (c Chessboard) candSquaresBishop(from int) []int {
+  candSquares := make([]int, 0, 16)
+
+  color := c.pieceColorOnPosition(from)
+
+  for _,v := range([][]int{{1,1},{1,-1},{-1,1},{-1,-1}}) {
+    currRow := rowFromPosition(from) + v[0]
+    currCol := colFromPosition(from) + v[1]
+
+    currPos := posFromRowColumn(currRow, currCol)
+
+    for currRow > -1 && currRow < 8 && currCol > -1 && currCol < 8 {
+      if c.pieceColorOnPosition(currPos) == color {
+        break
+      }
+
+      candSquares = append(candSquares, currPos)
+
+      if c.pieceColorOnPosition(currPos) != -1 {
+        break
+      }
+
+      currRow = rowFromPosition(currPos) + v[0]
+      currCol = colFromPosition(currPos) + v[1]
+
+      currPos = posFromRowColumn(currRow, currCol)
+    }
+  }
+
+  return candSquares
+}
+
+// Checks if the move from -> to is a valid kingside castling attempt
+// for the given color.
+func (c Chessboard) kingsideCastlingAttempt(color int, from int, to int) bool {
+  if color == 0 && from == 60 && to == 62 {
+    return true
+  }
+
+  if color == 1 && from == 4 && to == 6 {
+    return true
+  }
+
+  return false
+}
+
+// Checks if the move from -> to is a valid queenside castling attempt
+// for the given color.
+func (c Chessboard) queensideCastlingAttempt(color int, from int, to int) bool {
+  if color == 0 && from == 60 && to == 58 {
+    return true
+  }
+
+  if color == 1 && from == 4 && to == 2 {
+    return true
+  }
+
+  return false
+}
+
+// Checks if the move from -> to is a castling attempt for the given color.
+func (c Chessboard) castlingAttempt(color int, from int, to int) bool {
+  return (c.kingsideCastlingAttempt(color, from, to) ||
+    c.queensideCastlingAttempt(color, from, to))
+}
+
+// Checks if the move from -> to is a legal castling move.
+func (c Chessboard) validCastle(from int, to int) bool {
+  if !c.validPieceKing(from) {
+    return false
+  }
+
+  color := c.pieceColorOnPosition(from)
+
+  if !c.castlingAttempt(color, from, to) {
+    return false
+  }
+
+  if c.kingInCheck(color) {
+    return false
+  }
+
+  rookPos := c.rookCastleKingsidePosition(color)
+
+  if c.kingsideCastlingAttempt(color, from, to) {
+    if !c.ksCanCastle[color] {
+      return false
+    }
+  }
+
+  if c.queensideCastlingAttempt(color, from, to) {
+    if !c.qsCanCastle[color] {
+      return false
+    }
+
+    rookPos = c.rookCastleQueensidePosition(color)
+  }
+
+  if !c.validateEmptySquaresBetween(from, rookPos) {
+    return false
+  }
+
+  for _, v := range(squaresBetween(from, rookPos)) {
+    if c.squareThreatened(v, color) {
+      return false
+    }
+  }
+
+  return true
+}
+
+// Validates a king move, does not take into account turn or castling.
 func (c Chessboard) validMoveKing(from int, to int) bool {
   if !c.validPieceKing(from) {
       return false
@@ -338,6 +672,42 @@ func (c Chessboard) validMoveKing(from int, to int) bool {
 
   return false
 
+}
+
+// Generates the candidate squares for a king on the given
+// square. Returns the squares as an array of possible destinations.
+func (c Chessboard) candSquaresKing(from int) []int {
+  if !c.validPieceKing(from) {
+    return make([]int, 0, 1)
+  }
+
+  candSquares := make([]int, 0, 16)
+  color := c.pieceColorOnPosition(from)
+  directions := [][]int{{1,1},{1,-1},{-1,1},{-1,-1},{0,1},{0,-1},{-1,0},{1,0}}
+  for _,v := range(directions) {
+    currRow := rowFromPosition(from) + v[0]
+    currCol := colFromPosition(from) + v[1]
+
+    if currRow < 0 || currRow > 7 || currCol < 0 || currCol > 7 {
+      continue
+    }
+
+    currPos := posFromRowColumn(currRow, currCol)
+
+    if c.pieceColorOnPosition(currPos) != color {
+      candSquares = append(candSquares, currPos)
+    }
+  }
+
+  if c.validCastle(from, from + 2) {
+    candSquares = append(candSquares, from + 2)
+  }
+
+  if c.validCastle(from, from - 2) {
+    candSquares = append(candSquares, from - 2)
+  }
+
+  return candSquares
 }
 
 // Validates a pawn move, does not take into account turn.
@@ -401,13 +771,63 @@ func (c Chessboard) validMovePawn(from int, to int) bool {
   return false
 }
 
+// Generates the candidate squares for a pawn on the given
+// square. Returns the squares as an array of possible destinations.
+func (c Chessboard) candSquaresPawn(from int) []int {
+  if !c.validPiecePawn(from) {
+    return make([]int, 0, 1)
+  }
+
+  candSquares := make([]int, 0, 16)
+  color := c.pieceColorOnPosition(from)
+
+  forwardDir := color*2 - 1
+
+  directions := [][]int{{forwardDir,0}}
+
+  row := rowFromPosition(from)
+
+  if color == 0 && row == 6 {
+    directions = append(directions, []int{-2, 0})
+  } else if color == 1 && row == 1 {
+    directions = append(directions, []int{2, 0})
+  }
+
+  for _,v := range(directions) {
+    currRow := rowFromPosition(from) + v[0]
+    currCol := colFromPosition(from) + v[1]
+
+    currPos := posFromRowColumn(currRow, currCol)
+
+    if c.pieceColorOnPosition(currPos) != color {
+      candSquares = append(candSquares, currPos)
+    } else {
+      break
+    }
+  }
+
+  directions = [][]int{{forwardDir,-1},{forwardDir,1}}
+  for _,v := range(directions) {
+    currRow := rowFromPosition(from) + v[0]
+    currCol := colFromPosition(from) + v[1]
+
+    currPos := posFromRowColumn(currRow, currCol)
+
+    if c.validMovePawn(from, currPos) {
+      candSquares = append(candSquares, currPos)
+    }
+  }
+
+  return candSquares
+}
+
 // Lists the pieces threatening a position
 func (c Chessboard) piecesThreateningPos(sq int, color int) []int {
   threatening := make([]int, 0, 16)
 
   for i := 0; i < 64; i++ {
-    if c.validPiece(i) && c.prelimValidMove(i, sq) &&
-      c.pieceColorOnPosition(i) == 1 - color {
+    if c.pieceColorOnPosition(i) == 1 - color && c.prelimValidMove(i, sq) &&
+       c.validPiece(i) {
       threatening = append(threatening, i)
     }
   }
@@ -432,9 +852,9 @@ func (c Chessboard) positionForKing(color int) int {
 }
 
 // Checks if a king is in check
-func (c Chessboard) kingInCheck(color int) {
+func (c Chessboard) kingInCheck(color int) bool {
   pos := c.positionForKing(color)
-  c.squareThreatened(pos, color)
+  return c.squareThreatened(pos, color)
 }
 
 // Returns 0 for white pieces and 1 for
@@ -447,23 +867,29 @@ func (c Chessboard) pieceColorOnPosition(pos int) int {
   return int(c.boardSquares[pos] / 10)
 }
 
+// Validates that the color of the piece at position pos is color.
 func (c Chessboard) validColorPiece(pos int, color int) bool {
   return c.pieceColorOnPosition(pos) == color
 }
 
 // Helper methods
+
+// Returns the row of a given pos.
 func rowFromPosition(pos int) int {
   return pos / 8
 }
 
+// Returns the column of a given pos.
 func colFromPosition(pos int) int {
   return pos % 8
 }
 
+// Returns the position from a given row and column.
 func posFromRowColumn(r int, c int) int {
   return r * 8 + c
 }
 
+// Takes an algebraic square and converts it into a 0-63 square.
 func alToPos(al string) int {
   r, _ := strconv.Atoi(al[1:])
   r = 8 - r
@@ -499,6 +925,32 @@ func travelDirection(from int, to int) (rowDir int, colDir int) {
   return
 }
 
+// Generates the en-passant square given the from/to square of
+// a move, and the color of the move.
+func (c Chessboard) generateEpPos(color int, from int, to int) int {
+  fromRow := rowFromPosition(from)
+  fromCol := colFromPosition(from)
+  toRow := rowFromPosition(to)
+  toCol := colFromPosition(to)
+
+  if !(c.validPiecePawn(from) && c.validColorPiece(from, color)) {
+    return -1
+  }
+
+  if (c.validColorPiece(from, 0) && toRow == 4 && fromRow == 6 &&
+    toCol == fromCol && c.validateEmptySquaresBetween(from, to)) {
+    return from - 8
+  }
+
+  if (c.validColorPiece(from, 1) && toRow == 3 && fromRow == 1 &&
+    toCol == fromCol && c.validateEmptySquaresBetween(from, to)) {
+    return from + 8
+  }
+
+  return -1
+}
+
+// Returns an array of the squares directly in between two squares.
 func squaresBetween(from int, to int) []int {
   sqBetween := make([]int, 0, 8)
 
@@ -514,12 +966,12 @@ func squaresBetween(from int, to int) []int {
 
   for currPos > -1 && currPos < 64 && currPos != to {
     currRow = rowFromPosition(currPos)
-    currCol = rowFromPosition(currPos)
+    currCol = colFromPosition(currPos)
 
     sqBetween = append(sqBetween, currPos)
 
     currRow = currRow + rowDir
-    currCol := currCol + colDir
+    currCol = currCol + colDir
 
     currPos = posFromRowColumn(currRow, currCol)
   }
@@ -527,6 +979,7 @@ func squaresBetween(from int, to int) []int {
   return sqBetween
 }
 
+// Validates that there aren't pieces between from and to.
 func (c Chessboard) validateEmptySquaresBetween(from int, to int) bool {
   for _, v := range(squaresBetween(from, to)) {
     if c.validPiece(v) {
@@ -537,6 +990,104 @@ func (c Chessboard) validateEmptySquaresBetween(from int, to int) bool {
   return true
 }
 
+// Checks if the kingside position is castleable for the given color.
+func (c Chessboard) validCastlePositionKingside(color int) bool {
+  kingPos := c.kingCastlePosition(color)
+  rookPos := c.rookCastleKingsidePosition(color)
+
+  if c.pieceColorOnPosition(kingPos) != color {
+    return false
+  }
+
+  if c.pieceColorOnPosition(rookPos) != color {
+    return false
+  }
+
+  return (c.validPieceKing(kingPos) && c.validPieceRook(rookPos))
+}
+
+// Checks if the queenside position is castleable for the given color.
+func (c Chessboard) validCastlePositionQueenside(color int) bool {
+  kingPos := c.kingCastlePosition(color)
+  rookPos := c.rookCastleQueensidePosition(color)
+
+  if c.pieceColorOnPosition(kingPos) != color {
+    return false
+  }
+
+  if c.pieceColorOnPosition(rookPos) != color {
+    return false
+  }
+
+  return (c.validPieceKing(kingPos) && c.validPieceRook(rookPos))
+}
+
+func (c Chessboard) kingCastlePosition(color int) int {
+  if color == 0 {
+    return 60
+  }
+
+  return 4
+}
+
+func (c Chessboard) rookPositionBeforeCastle(color int, from int, to int) int {
+  if color == 0 && from == 60 && to == 62 {
+    return 63
+  }
+
+  if color == 0 && from == 60 && to == 58 {
+    return 56
+  }
+
+  if color == 1 && from == 4 && to == 6 {
+    return 7
+  }
+
+  if color == 1 && from == 4 && to == 2 {
+    return 0
+  }
+
+  return -1
+}
+
+func (c Chessboard) rookPositionAfterCastle(color int, from int, to int) int {
+  if color == 0 && from == 60 && to == 62 {
+    return 61
+  }
+
+  if color == 0 && from == 60 && to == 58 {
+    return 59
+  }
+
+  if color == 1 && from == 4 && to == 6 {
+    return 5
+  }
+
+  if color == 1 && from == 4 && to == 2 {
+    return 3
+  }
+
+  return -1
+}
+
+func (c Chessboard) rookCastleKingsidePosition(color int) int {
+  if color == 0 {
+    return 63
+  }
+
+  return 7
+}
+
+func (c Chessboard) rookCastleQueensidePosition(color int) int {
+  if color == 0 {
+    return 56
+  }
+
+  return 0
+}
+
+
+// Returns the absolute value of an int.
 func abs(n int) int {
   if n > 0 {
     return n
@@ -545,7 +1096,21 @@ func abs(n int) int {
   return -n
 }
 
+// Check if a given element exists in a slice.
+func intInSlice(a int, list []int) bool {
+    for _, b := range list {
+        if b == a {
+            return true
+        }
+    }
+
+    return false
+}
+
 // Debug Methods
+
+// Returns the pretty printed symbol of a piece on a square, used in
+// debugging board prints.
 func (c Chessboard) prettyPrintedPieceOnSquare(sq int) string {
   prettyText := ""
 
@@ -573,6 +1138,9 @@ func (c Chessboard) prettyPrintedPieceOnSquare(sq int) string {
   return prettyText
 }
 
+
+// Prints the board along with any necessary information to fully
+// describe a position.
 func (c Chessboard) PrintBoard() {
   if c.turn {
     fmt.Println("Black to play.")
@@ -580,8 +1148,46 @@ func (c Chessboard) PrintBoard() {
     fmt.Println("White to play.")
   }
 
+  fmt.Print("Enpassant position: ")
+  if c.enpassantPos == -1 {
+    fmt.Println("-")
+  } else {
+    fmt.Println(c.enpassantPos)
+  }
+
   for i, _ := range(c.boardSquares) {
     fmt.Printf("%s ", c.prettyPrintedPieceOnSquare(i))
+    if i % 8 == 7 {
+      fmt.Println()
+    }
+  }
+}
+
+
+// Prints a board with the legal moves of a piece on source indicated by
+// algebraic notation (alsource).
+func (c Chessboard) PrintLegalMoves(alsource string) {
+  source := alToPos(alsource)
+
+  if c.turn {
+    fmt.Println("Black to play.")
+  } else {
+    fmt.Println("White to play.")
+  }
+
+  fromSquares := c.LegalMovesFromSquare(source)
+
+  for i, _ := range(c.boardSquares) {
+    if intInSlice(i, fromSquares) {
+      if (c.boardSquares[i] % 10) < 0 {
+        fmt.Printf("x ")
+      } else {
+        fmt.Printf("c ")
+      }
+    } else {
+      fmt.Printf("%s ", c.prettyPrintedPieceOnSquare(i))
+    }
+
     if i % 8 == 7 {
       fmt.Println()
     }
