@@ -195,7 +195,7 @@ func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool
     return false
   }
 
-  // TODO: Validate promopiece
+  // TODO: Validate promopiece correctness.
 
   if !c.prelimValidMove(from, to) {
     return false
@@ -207,11 +207,13 @@ func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool
   copy(preKsCanCastle, c.ksCanCastle)
   copy(preQsCanCastle, c.qsCanCastle)
 
+  // The king cannot castle after it has moved.
   if c.validPieceKing(from) {
     c.ksCanCastle[color] = false
     c.qsCanCastle[color] = false
   }
 
+  // The king cannot castle on the side which the rook has moved.
   if c.validPieceRook(from) {
     if from == c.rookCastleKingsidePosition(color) {
       c.ksCanCastle[color] = false
@@ -246,11 +248,17 @@ func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool
       }
   }
 
+  // Set the enpassant position
   preEpPos := c.enpassantPos
   c.enpassantPos = c.generateEpPos(color, from, to)
+
+  // Update the underlying move.
   restoreMap[to] = c.boardSquares[to]
   restoreMap[from] = c.boardSquares[from]
 
+  // If this is an attempted promotion, promote the pawn
+  // If it is a dryrun, we don't really care what piece the pawn
+  // is promoted to, therefore, we will ignore this validation.
   if c.attemptedPromotion(from, to) && !dryrun {
     if promopiece == "" {
       c.boardSquares[to] = int8(color * 10 + 5)
@@ -265,6 +273,8 @@ func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool
   }
 
   kingInCheck := c.kingInCheck(color)
+
+  // If the king is in check, or this is a dry run, reset the board.
   if kingInCheck || dryrun {
     for k, v := range restoreMap {
       c.boardSquares[k] = v
