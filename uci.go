@@ -9,6 +9,7 @@ import (
   "fmt"
   "bufio"
   "strings"
+  "strconv"
 )
 
 type uciConfig struct {
@@ -84,7 +85,22 @@ func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard
         break
       }
     }
+  case "go":
+    depth := 4
+    if len(cmdArr) == 3 {
+      depth, _ = strconv.Atoi(cmdArr[2])
+    }
 
+    _, move := b.alphaBeta(depth)
+    fmt.Println("bestmove " + posToAl(move[0]) + posToAl(move[1]))
+  case "sevaluate":
+    if !engineConfig.debug {
+      fmt.Println("Unknown command.")
+
+      break
+    }
+
+    fmt.Println(b.Evaluate())
   case "legalmoves":
     if !engineConfig.debug {
       fmt.Println("Unknown command.")

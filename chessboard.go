@@ -36,6 +36,14 @@ type Chessboard struct {
   turn bool // false for white's move, true for black's move
 }
 
+// Struct to represent changes to the board.
+type RestoreData struct {
+  squareChanges map[int]int8
+  enpassantPos int
+  ksCanCastle []bool
+  qsCanCastle []bool
+}
+
 // Creates a new chessboard from a given fen position. Either returns the
 // chessboard in board, or the creation error in err.
 func NewChessboard(fen string) (board Chessboard, err error) {
@@ -162,7 +170,8 @@ func (c Chessboard) attemptedPromotion(from int, to int) bool {
 
 // Checks if a move is legal without altering the board.
 func (c Chessboard) moveIsLegal(from int, to int, promopiece string) bool {
-  return c.Move(from, to, promopiece, true)
+  success, _ := c.Move(from, to, promopiece, true)
+  return success
 }
 
 // Makes a move using algebraic descriptive notation.
@@ -176,12 +185,32 @@ func (c *Chessboard) MoveAlDescriptive(notation string) bool {
 
 // Moves from->to if the move is legal.
 func (c *Chessboard) MakeMove(from int, to int, promopiece string) bool {
+  success, _ := c.Move(from, to, promopiece, false)
+  return success
+}
+
+func (c *Chessboard) RestoreBoard(d RestoreData) {
+  for k, v := range d.squareChanges {
+    c.boardSquares[k] = v
+  }
+
+  c.ksCanCastle[0] = d.ksCanCastle[0]
+  c.qsCanCastle[0] = d.qsCanCastle[0]
+
+  c.ksCanCastle[1] = d.ksCanCastle[1]
+  c.qsCanCastle[1] = d.qsCanCastle[1]
+
+  c.enpassantPos = d.enpassantPos
+  c.turn = !c.turn
+}
+
+func (c *Chessboard) MakeMoveWithRestore(from int, to int, promopiece string) (bool, RestoreData) {
   return c.Move(from, to, promopiece, false)
 }
 
 // Makes a move on the board, returning the legaility of the move
 // as a boolean.
-func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool {
+func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) (bool, RestoreData) {
   color := c.pieceColorOnPosition(from)
   turn := 0
   restoreMap := make(map[int]int8)
@@ -192,13 +221,13 @@ func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool
 
   // Incorrect turn
   if color != turn {
-    return false
+    return false, RestoreData{}
   }
 
   // TODO: Validate promopiece correctness.
 
   if !c.prelimValidMove(from, to) {
-    return false
+    return false, RestoreData{}
   }
 
   preKsCanCastle := make([]bool, 2)
@@ -274,6 +303,8 @@ func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool
 
   kingInCheck := c.kingInCheck(color)
 
+  restoreData := RestoreData{restoreMap, preEpPos, preKsCanCastle, preQsCanCastle}
+
   // If the king is in check, or this is a dry run, reset the board.
   if kingInCheck || dryrun {
     for k, v := range restoreMap {
@@ -288,12 +319,12 @@ func (c *Chessboard) Move(from int, to int, promopiece string, dryrun bool) bool
 
     c.enpassantPos = preEpPos
 
-    return !kingInCheck
+    return !kingInCheck, restoreData
   }
 
   c.turn = !c.turn
 
-  return true
+  return true, restoreData
 }
 
 // Returns the legal moves of a piece on a particular
@@ -310,6 +341,20 @@ func (c Chessboard) LegalMovesFromSquare(from int) []int {
   }
 
   return legalMoves
+}
+
+func (c Chessboard) AllLegalMoves() [][]int {
+  moves := make([][]int, 0, 256)
+
+  for i := 0; i < 64; i++ {
+    if c.boardSquares[i] != -1 {
+      for _, j := range(c.LegalMovesFromSquare(i)) {
+        moves = append(moves, []int{i, j})
+      }
+    }
+  }
+
+  return moves
 }
 
 // Validates a move on a board with a from index and a to index
@@ -588,10 +633,10 @@ func (c Chessboard) validMoveBishop(from int, to int) bool {
   toCol := colFromPosition(to)
 
   for offset := 1; offset <= 7; offset++ {
-    if (toRow == (fromRow + offset) ||
-        toRow == (fromRow - offset) &&
-        toCol == (fromCol + offset) ||
-        toCol == (fromCol - offset)) {
+    if ((toRow == (fromRow + offset) ||
+        toRow == (fromRow - offset)) &&
+        (toCol == (fromCol + offset) ||
+        toCol == (fromCol - offset))) {
 
           return true
 
@@ -961,6 +1006,11 @@ func alToPos(al string) int {
   c := ([]byte(al[0:1]))[0] - []byte("a"[0:1])[0]
 
   return posFromRowColumn(r, int(c))
+}
+
+func posToAl(pos int) string {
+  c := colFromPosition(pos) + int([]byte("a"[0:1])[0])
+  return fmt.Sprintf("%c%d", c, 8 - rowFromPosition(pos))
 }
 
 // Return the row/col direction (1,-1,0) to travel "from" to "to."
