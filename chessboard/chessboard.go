@@ -1,4 +1,4 @@
-package main
+package chessboard
 
 import (
   "errors"
@@ -33,6 +33,7 @@ type Chessboard struct {
   enpassantPos int // The position for an enpassant capture, -1 if it doesnt exist.
   ksCanCastle []bool // Can players castle king-side? (0 white, 1 black)
   qsCanCastle []bool // Can players castle queen-side? (0 white, 1 black)
+  book OpeningBook
   turn bool // false for white's move, true for black's move
 }
 
@@ -53,7 +54,15 @@ func NewChessboard(fen string) (board Chessboard, err error) {
     return
   }
 
+
   board = Chessboard{}
+  b, e := NewBook("/Users/vigneshv/bin/ProDeo.bin")
+
+  if e == nil {
+    board.book = *b
+  } else {
+    fmt.Println("Could not load book.")
+  }
 
   // Configure the board to have -1 (no piece) on
   // every square.
@@ -922,7 +931,9 @@ func (c Chessboard) candSquaresPawn(from int) []int {
 
     currPos := posFromRowColumn(currRow, currCol)
 
-    if c.validMovePawn(from, currPos) {
+    if currRow >= 0 && currCol >= 0 &&
+       currRow <= 7 && currCol <= 7 &&
+       c.validMovePawn(from, currPos) {
       candSquares = append(candSquares, currPos)
     }
   }
@@ -1008,7 +1019,7 @@ func alToPos(al string) int {
   return posFromRowColumn(r, int(c))
 }
 
-func posToAl(pos int) string {
+func PosToAl(pos int) string {
   c := colFromPosition(pos) + int([]byte("a"[0:1])[0])
   return fmt.Sprintf("%c%d", c, 8 - rowFromPosition(pos))
 }
@@ -1233,23 +1244,47 @@ func intInSlice(a int, list []int) bool {
 // Returns the pretty printed symbol of a piece on a square, used in
 // debugging board prints.
 func (c Chessboard) prettyPrintedPieceOnSquare(sq int) string {
-  prettyText := ""
+  prettyText := "\u2B1C"
 
   switch c.boardSquares[sq] % 10 {
   case 6:
-    prettyText = "K"
+    if c.boardSquares[sq] / 10 == 1 {
+      prettyText = "♔"
+    } else {
+      prettyText = "♚"
+    }
   case 5:
-    prettyText = "Q"
+    if c.boardSquares[sq] / 10 == 1 {
+      prettyText = "♕"
+    } else {
+      prettyText = "♛"
+    }
   case 4:
-    prettyText = "R"
+    if c.boardSquares[sq] / 10 == 1 {
+      prettyText = "♖"
+    } else {
+      prettyText = "♜"
+    }
   case 3:
-    prettyText = "B"
+    if c.boardSquares[sq] / 10 == 1 {
+      prettyText = "♗"
+    } else {
+      prettyText = "♝"
+    }
   case 2:
-    prettyText = "N"
+    if c.boardSquares[sq] / 10 == 1 {
+      prettyText = "♘"
+    } else {
+      prettyText = "♞"
+    }
   case 1:
-    prettyText = "P"
+    if c.boardSquares[sq] / 10 == 1 {
+      prettyText = "♙"
+    } else {
+      prettyText = "♟"
+    }
   default:
-    prettyText = "-"
+    prettyText = "▢"
   }
 
   if c.boardSquares[sq] / 10 == 1 {

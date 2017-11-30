@@ -10,6 +10,7 @@ import (
   "bufio"
   "strings"
   "strconv"
+  "github.com/vigneshv59/chessboard/chessboard"
 )
 
 type uciConfig struct {
@@ -32,13 +33,15 @@ func handleNewGame() {
   // TODO: Clear chessboard and initialize new game
 }
 
-func handlePosition(position string) Chessboard {
-  board, _ := NewChessboard(position)
+func handlePosition(position string) chessboard.Chessboard {
+  board, _ := chessboard.NewChessboard(position)
 
   return board
 }
 
-func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard {
+func handleInput(input string,
+                  engineConfig *uciConfig,
+                  b chessboard.Chessboard) chessboard.Chessboard {
   cmdArr := strings.Split(input, " ")
 
   switch cmdArr[0] {
@@ -91,31 +94,9 @@ func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard
       depth, _ = strconv.Atoi(cmdArr[2])
     }
 
-    _, move := b.alphaBeta(depth)
-    fmt.Println("bestmove " + posToAl(move[0]) + posToAl(move[1]))
-  case "sevaluate":
-    if !engineConfig.debug {
-      fmt.Println("Unknown command.")
+    _, move := b.AlphaBeta(depth)
 
-      break
-    }
-
-    fmt.Println(b.Evaluate())
-  case "legalmoves":
-    if !engineConfig.debug {
-      fmt.Println("Unknown command.")
-
-      break
-    }
-
-    if len(cmdArr) <= 1 {
-      fmt.Println("Command takes exactly one argument.")
-
-      break
-    }
-
-    b.PrintLegalMoves(cmdArr[1])
-
+    fmt.Println("bestmove " + chessboard.PosToAl(move[0]) + chessboard.PosToAl(move[1]))
   case "dump":
     if !engineConfig.debug {
       fmt.Println("Unknown command.")
@@ -123,6 +104,7 @@ func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard
       break
     }
 
+    fmt.Println(b.BookHash())
     b.PrintBoard()
 
     break
@@ -135,8 +117,9 @@ func handleInput(input string, engineConfig *uciConfig, b Chessboard) Chessboard
 
 func main() {
   fmt.Println("BrainyEngine by Vignesh Varadarajan v0.0")
+
   engineConfig := uciConfig{false}
-  var board Chessboard
+  var board chessboard.Chessboard
 
   for {
 

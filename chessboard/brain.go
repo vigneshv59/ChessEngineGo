@@ -1,4 +1,5 @@
-package main
+package chessboard
+
 import "fmt"
 
 // Runs the recursive Alpha-Beta function, returns the score, and a tuple
@@ -22,10 +23,12 @@ func (c *Chessboard) alphaBetaHelper(a int, b int, depth int) (int, []int) {
     color = 1
   }
 
+  // Checkmate
   if c.kingInCheck(color) && len(moves) == 0 {
     return 9999, make([]int, 0)
   }
 
+  // Stalemate
   if !(c.kingInCheck(color)) && len(moves) == 0 {
     return 0, make([]int, 0)
   }
@@ -51,8 +54,18 @@ func (c *Chessboard) alphaBetaHelper(a int, b int, depth int) (int, []int) {
 
 // Calls the Alpha-Beta helper with a seed alpha and beta value, along with
 // the given depth.
-func (c Chessboard) alphaBeta(depth int) (int, []int) {
+func (c Chessboard) AlphaBeta(depth int) (int, []int) {
+  var cm []int
+
+  if c.book.name != "" {
+    cm = c.book.pickMove(c.BookHash())
+  }
+
   score, m := c.alphaBetaHelper(-10000, 10000, depth)
+
+  if len(cm) == 2 {
+    m = cm
+  }
 
   if c.turn {
     return -score, m
