@@ -9,6 +9,7 @@ import (
   "fmt"
   "bufio"
   "strings"
+  "regexp"
   "strconv"
   "github.com/vigneshv59/chessboard/chessboard"
 )
@@ -18,6 +19,8 @@ type uciConfig struct {
 }
 
 func handleUci() {
+  fmt.Println("id name BrainyEngine 1.0")
+  fmt.Println("id author Vignesh")
   fmt.Println("uciok")
 }
 
@@ -41,7 +44,8 @@ func handlePosition(position string) chessboard.Chessboard {
 
 func handleInput(input string,
                   engineConfig *uciConfig,
-                  b chessboard.Chessboard) chessboard.Chessboard {
+                  b *chessboard.Chessboard,
+                  s *bool) {
   cmdArr := strings.Split(input, " ")
 
   switch cmdArr[0] {
@@ -49,6 +53,10 @@ func handleInput(input string,
     handleUci()
   case "isready":
     handleIsReady()
+  case "quit":
+    os.Exit(0)
+  case "seval":
+    fmt.Println(b.Evaluate())
   case "debug":
     debugState := false
 
@@ -66,12 +74,14 @@ func handleInput(input string,
       break
     }
 
-    if cmdArr[1] != "startpos" {
-      fen = strings.Join(cmdArr[1:], " ")
+    if cmdArr[1] == "fen" {
+      fen = strings.Join(cmdArr[2:], " ")
+    } else if cmdArr[1] != "startpos" {
+      return
     }
 
-
-    b = handlePosition(fen)
+    *s = true
+    *b = handlePosition(fen)
 
     for i, v := range cmdArr {
       if v == "moves" {
@@ -88,15 +98,25 @@ func handleInput(input string,
         break
       }
     }
+    *s = false
   case "go":
     depth := 4
     if len(cmdArr) == 3 {
       depth, _ = strconv.Atoi(cmdArr[2])
     }
 
-    _, move := b.AlphaBeta(depth)
+    if len(cmdArr) == 2 {
+      depth = 10000
+    }
 
-    fmt.Println("bestmove " + chessboard.PosToAl(move[0]) + chessboard.PosToAl(move[1]))
+    go func ()  {
+      *s = false
+      _, move := b.AlphaBeta(depth, s)
+      fmt.Println("bestmove " + chessboard.PosToAl(move[0]) + chessboard.PosToAl(move[1]))
+      *s = false
+    }()
+  case "stop":
+    *s = true
   case "dump":
     if !engineConfig.debug {
       fmt.Println("Unknown command.")
@@ -111,8 +131,6 @@ func handleInput(input string,
   default:
     fmt.Println("Unknown command.")
   }
-
-  return b
 }
 
 func main() {
@@ -120,6 +138,8 @@ func main() {
 
   engineConfig := uciConfig{false}
   var board chessboard.Chessboard
+  b := false
+  stopped := &b
 
   for {
 
@@ -129,9 +149,15 @@ func main() {
     if err != nil {
       fmt.Println(err)
     } else {
-      board = handleInput(strings.TrimSpace(string(sentence)),
+      m, _ := regexp.MatchString("isready", string(sentence))
+
+      if m {
+          fmt.Println("readyok")
+      } else {
+        handleInput(strings.TrimSpace(string(sentence)),
                 &engineConfig,
-                board)
+                &board, stopped)
+      }
     }
 
   }

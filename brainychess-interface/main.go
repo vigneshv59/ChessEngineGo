@@ -45,6 +45,10 @@ func handleInterfaceInput(input string,
 
     b = handlePosition(fen)
   default:
+    if len(cmdArr) == 0 || cmdArr[0] == "" {
+      return b
+    }
+
     success := b.MoveAlDescriptive(cmdArr[0])
 
     if !success {

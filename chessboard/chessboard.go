@@ -61,7 +61,7 @@ func NewChessboard(fen string) (board Chessboard, err error) {
   if e == nil {
     board.book = *b
   } else {
-    fmt.Println("Could not load book.")
+    // fmt.Println("Could not load book.")
   }
 
   // Configure the board to have -1 (no piece) on
@@ -186,6 +186,10 @@ func (c Chessboard) moveIsLegal(from int, to int, promopiece string) bool {
 // Makes a move using algebraic descriptive notation.
 // Example: e2e4
 func (c *Chessboard) MoveAlDescriptive(notation string) bool {
+  if len(notation) < 4 {
+    return false
+  }
+
   fromSquare := alToPos(notation[0:2])
   toSquare := alToPos(notation[2:])
 

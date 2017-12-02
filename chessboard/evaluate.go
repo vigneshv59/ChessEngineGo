@@ -83,14 +83,14 @@ func scorePawnColsArray(colorCols [][]int, color int) int {
 
   for i, col := range(colorCols) {
     if len(col) > 1 {
-      bonus -= 5 * (len(col) - 1)
+      bonus -= 2 * (len(col) - 1)
     }
 
     for _, r := range(col) {
       if i > 0 {
         for _, rp := range(colorCols[i-1]) {
           if r - rp == (color * 2) - 1 {
-            bonus += 2
+            bonus += 1
           }
         }
       }
@@ -98,7 +98,7 @@ func scorePawnColsArray(colorCols [][]int, color int) int {
       if i < 7 {
         for _, rp := range(colorCols[i+1]) {
           if r - rp == 1 {
-            bonus += 2
+            bonus += 1
           }
         }
       }
@@ -117,7 +117,7 @@ func (c Chessboard) pawnPointsAtSquare(s int) int {
   backRank := (1 - color) * 7
 
   advanced := 6 - (backRank - row) * (color * 2 - 1)
-  score := 100 + 8*(advanced)
+  score := 100 + 2*(advanced)
 
   if (row == 3 || row == 4) && (col == 3 || col == 4) {
     score += 10
