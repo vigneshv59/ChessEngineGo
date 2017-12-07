@@ -14,12 +14,24 @@ BrainyEngine currently responds to the following UCI commands. More commands wil
 
 - `isready`
 	- **Usage**: Used to query for engine intialization.
-		- *TODO:* After the engine is fully featured, make sure that the `isready` command elicits a response appropriately.
 	- **Expected Response**: `readyok` after the engine is ready.
 
 - `position [fen | startpos] moves ....`
 	- **Usage**: Used to initialize the engine at a position.
 	- **Expected Response**: No response.
+
+- `go`
+	- **Usage**: Start the calculation of the current position with some of the following subcommands.
+		- `infinite`: Seach until the `stop` command is sent.
+		- `go depth [depth]`: Seach moves for a specific depth.
+		- Other subcommands can be seen on the official UCI documentation, and will be added if time permits.
+	- **Expected Response**:
+		- Various `info` lines.
+		- `bestmove [move]` when the command terminates.
+		- Sends periodic update messages with explored lines at a depth: `info depth [depth] nodes [nodes] nps [nodes/sec] score cp [score] time [time(ms)] pv [moves]`
+- `stop`
+	- **Usage**: Stop the calculations.
+	- **Expected Response**: `bestmove [move]` if a calculation is running, nothing otherwise.
 
 ### Custom Debugging Commands (Currently Implemented)
 These commands are only valid when debug mode is enabled, otherwise the engine will not respond to these commands.
@@ -31,30 +43,23 @@ These commands are only valid when debug mode is enabled, otherwise the engine w
  	- **Usage**: Dump the board to the command line with legal moves of the piece on the given square indicated by `x` or `c` depending on whether the move will be a capture.
 	- **Expected Response**: The engine will respond with a visual representation of the chessboard with legal moves indicated.
 
-
-### Standard UCI Commands (Planned)
-- `go`
-	- **Usage**: Start the calculation of the current position with some of the following subcommands.
-		- `infinite`: Seach until the `stop` command is sent.
-		- `mate [x]`: Search for a mate in x moves.
-		- `movetime [x]`: Search with an x ms timeout.
-		- `searchmoves [moves]`: Search only the specified moves from the initial position.
-		- Other subcommands can be seen on the official UCI documentation, and will be added if time permits.
-	- **Expected Response**:
-		- Various `info` lines.
-		- `bestmove [move] ponder [move]` when the command terminates.
-- `stop`
-	- **Usage**: Stop the calculations.
-	- **Expected Response**: `bestmove [move] ponder [move]` if a calculation is running, nothing otherwise.
-
 ## Project Organization
 The project consists of the following files, and the files planned in the future:
 
 - `chessboard.go`: Consists of the logic for the chess game. Legal moves, board representation, etc. is in this file.
 
-- `uci.go`: Consists of the UCI interface implementation. Calls into functions in `chessboard.go` to handle legality checking and board representation handling. Will call into `calculate.go` to
+- `uci.go`: Consists of the UCI interface implementation. Calls into functions in `chessboard.go` to handle legality checking and board representation handling.
 
-- *Planned File:* `calculate.go`: Will contain the alpha-beta pruning/minimax algorithm implementation for the engine. Will call into `chessboard.go` to handle the board representations and legality.
+- `brain.go`: Contains the alpha-beta pruning/minimax algorithm implementation for the engine. Calls into `chessboard.go` to handle the board representations and legality.
+
+- `evaluate.go`: Contains the shallow evaluation functions for the board that eventually feed into the alpha-beta search algorithm. Uses primarily point values for pieces, along with bonuses for centralization (piece movement potential) and pawn structure. **TODO:** It would be nice to have some sort of smart way to handle king safety.
+
+- `book.go`: Contains the code to read from a polyglot opening book and lookup moves from the given book.
+
+- `bitboards.go`: Contains the logic for basic bitboard operations and handling bitboards for the chessboard itself. Does not handle any bitboard table lookup logic -- this is handled by `tables.go`
+
+- `tables.go`: Handles the precomputation of bitboard lookup tables, such as the lookup for the attack tables for all the pieces, to allow for fast access for the engine.
+
 
 ## Project Milestone Goals
 - November 9
