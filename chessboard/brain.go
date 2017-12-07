@@ -31,7 +31,7 @@ func (c *Chessboard) alphaBetaHelper(a int, b int, depth int, prevMoves [][]int,
 
   // Checkmate
   if c.kingInCheck(color) && len(moves) == 0 {
-    return 9999, prevMoves, 1
+    return -9999, prevMoves, 1
   }
 
   // Stalemate

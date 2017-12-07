@@ -34,6 +34,7 @@ type Chessboard struct {
   ksCanCastle []bool // Can players castle king-side? (0 white, 1 black)
   qsCanCastle []bool // Can players castle queen-side? (0 white, 1 black)
   book OpeningBook
+  bitboards Bitboards
   turn bool // false for white's move, true for black's move
 }
 
@@ -56,12 +57,14 @@ func NewChessboard(fen string) (board Chessboard, err error) {
 
 
   board = Chessboard{}
+  board.bitboards = NewBitboards()
+
   b, e := NewBook("/Users/vigneshv/bin/ProDeo.bin")
 
   if e == nil {
     board.book = *b
   } else {
-    // fmt.Println("Could not load book.")
+    fmt.Println("Could not load book.")
   }
 
   // Configure the board to have -1 (no piece) on
