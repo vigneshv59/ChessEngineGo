@@ -59,7 +59,8 @@ func handleInterfaceInput(input string,
     depth := 4
     b.PrintBoard()
 
-    _, move := b.AlphaBeta(depth)
+    a := false
+    _, move := b.AlphaBeta(depth, &a)
 
     if len(move) < 2 {
         fmt.Println("Game Over.")
